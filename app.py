@@ -276,9 +276,9 @@ with tab_inputs:
         # Display logic check
         if application == "Process":
             if p_out_psi >= (p_in_psi / 2):
-                st.warning(f"Condition A: $P_{out}$ ({p_out_psi:.1f}) >= $P_{in}/2$ ({p_in_psi/2:.1f}). Using actual $P_{out}$.")
+                st.warning(f"Condition A: $P_{{out}}$ ({p_out_psi:.1f}) >= $P_{{in}}/2$ ({p_in_psi/2:.1f}). Using actual $P_{{out}}$.")
             else:
-                st.error(f"Condition B: $P_{out}$ ({p_out_psi:.1f}) < $P_{in}/2$ ({p_in_psi/2:.1f}). Equation will use $P_{in}/2$.")
+                st.error(f"Condition B: $P_{{out}}$ ({p_out_psi:.1f}) < $P_{{in}}/2$ ({p_in_psi/2:.1f}). Equation will use $P_{{in}}/2$.")
 
 # ==========================================
 # TAB 3: CALCULATIONS
@@ -321,7 +321,7 @@ with tab_visuals:
     if not filtered_df.empty:
         fig2, ax2 = plt.subplots(figsize=(10, 6))
         
-        # We don't want 100 duplicate curves if they have the same orifice size. Group by orifice.
+        # We don't want duplicate curves if they have the same orifice size. Group by orifice.
         unique_traps = filtered_df.drop_duplicates(subset=['Product Name', 'Orifice Size (mm)'])
         
         for index, row in unique_traps.iterrows():
