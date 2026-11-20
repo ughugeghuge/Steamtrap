@@ -121,10 +121,10 @@ df['Orifice Size (mm)'] = pd.to_numeric(df['Orifice Size (mm)'], errors='coerce'
 df = df.dropna(subset=['Orifice Size (mm)'])
 
 # -----------------------------------------------------------------------------
-# 2. Calculation Logic & Functions
+# 2. Mathematical Functions
 # -----------------------------------------------------------------------------
 def calc_service_factor(S):
-    if S == 0: return 0
+    if S <= 0: return 0
     return 2.1 * (S - 1) / S
 
 def calc_steam_loss(d_mm, p_in_barg, p_out_barg, application):
@@ -145,36 +145,57 @@ def calc_steam_loss(d_mm, p_in_barg, p_out_barg, application):
             return 0.25 * cv * np.sqrt((p_in_psi - p_in_psi/2) * (p_in_psi + p_in_psi/2))
     return 0.0
 
+# -----------------------------------------------------------------------------
+# 3. Chart Design Functions
+# -----------------------------------------------------------------------------
+def style_axis(ax, title, xlabel, ylabel):
+    """Applies clean UI/UX styling to Matplotlib axes"""
+    ax.set_title(title, fontsize=13, fontweight='bold', pad=15)
+    ax.set_xlabel(xlabel, fontsize=11, fontweight='500', color='#333333')
+    ax.set_ylabel(ylabel, fontsize=11, fontweight='500', color='#333333')
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_color('#cccccc')
+    ax.spines['bottom'].set_color('#cccccc')
+    ax.grid(True, linestyle='--', alpha=0.5, color='#dddddd')
+    ax.tick_params(axis='both', colors='#555555', labelsize=10)
+
 def draw_orifice_schematic():
-    # Enforce white background to ensure visibility across light/dark themes
-    fig, ax = plt.subplots(figsize=(8, 4), facecolor='white')
+    fig, ax = plt.subplots(figsize=(7, 3), facecolor='white')
     ax.set_facecolor('white')
     
-    ax.plot([0, 10], [3, 3], 'k-', lw=3)
-    ax.plot([0, 10], [1, 1], 'k-', lw=3)
-    ax.add_patch(patches.Rectangle((4.8, 2.3), 0.4, 0.7, facecolor='gray', edgecolor='black'))
-    ax.add_patch(patches.Rectangle((4.8, 1.0), 0.4, 0.7, facecolor='gray', edgecolor='black'))
+    # Draw pipe
+    ax.plot([0, 10], [3, 3], 'k-', lw=2.5)
+    ax.plot([0, 10], [1, 1], 'k-', lw=2.5)
     
-    ax.arrow(1, 2, 2, 0, head_width=0.2, head_length=0.3, fc='blue', ec='blue')
-    ax.arrow(1.5, 2.5, 2, 0, head_width=0.15, head_length=0.2, fc='lightblue', ec='lightblue')
-    ax.arrow(1.5, 1.5, 2, 0, head_width=0.15, head_length=0.2, fc='lightblue', ec='lightblue')
-    ax.arrow(5.5, 2, 2, 0, head_width=0.2, head_length=0.3, fc='blue', ec='blue')
+    # Draw orifice
+    ax.add_patch(patches.Rectangle((4.8, 2.3), 0.4, 0.7, facecolor='#7f8c8d', edgecolor='none'))
+    ax.add_patch(patches.Rectangle((4.8, 1.0), 0.4, 0.7, facecolor='#7f8c8d', edgecolor='none'))
     
-    ax.text(2, 3.2, 'Inlet Pressure (Pin)', fontsize=12, color='darkred', fontweight='bold', ha='center')
-    ax.text(8, 3.2, 'Outlet Pressure (Pout)', fontsize=12, color='darkgreen', fontweight='bold', ha='center')
-    ax.text(5, 0.6, 'Orifice Diameter (D)', fontsize=12, color='black', fontweight='bold', ha='center')
-    ax.plot([5, 5], [1.7, 2.3], 'r--', lw=2)
+    # Arrows
+    ax.arrow(1, 2, 2, 0, head_width=0.2, head_length=0.3, fc='#3498db', ec='#3498db')
+    ax.arrow(1.5, 2.5, 2, 0, head_width=0.15, head_length=0.2, fc='#AED6F1', ec='#AED6F1')
+    ax.arrow(1.5, 1.5, 2, 0, head_width=0.15, head_length=0.2, fc='#AED6F1', ec='#AED6F1')
+    ax.arrow(5.5, 2, 2, 0, head_width=0.2, head_length=0.3, fc='#3498db', ec='#3498db')
+    
+    # Text
+    ax.text(2, 3.2, 'Inlet Pressure (Pin)', fontsize=11, color='#c0392b', fontweight='bold', ha='center')
+    ax.text(8, 3.2, 'Outlet Pressure (Pout)', fontsize=11, color='#27ae60', fontweight='bold', ha='center')
+    ax.text(5, 0.6, 'Orifice Diameter (D)', fontsize=11, color='#2c3e50', fontweight='bold', ha='center')
+    ax.plot([5, 5], [1.7, 2.3], 'r--', lw=1.5)
 
     ax.set_xlim(0, 10)
     ax.set_ylim(0, 4)
     ax.axis('off')
+    plt.tight_layout()
     return fig
 
 # -----------------------------------------------------------------------------
-# 3. Main Streamlit App
+# 4. Main Streamlit Interface
 # -----------------------------------------------------------------------------
 st.set_page_config(page_title="Steam Trap Loss Calculator", layout="wide")
-st.title("Steam Trap Loss Calculator")
+st.title("Steam Trap Loss Modeler")
+st.markdown("<style> .stTabs [data-baseweb='tab-list'] { gap: 20px; } </style>", unsafe_allow_html=True)
 
 tab_theory, tab_inputs, tab_calcs, tab_visuals = st.tabs([
     "Theory & Nomenclature", 
@@ -183,15 +204,18 @@ tab_theory, tab_inputs, tab_calcs, tab_visuals = st.tabs([
     "Graph Visuals"
 ])
 
-# --- TAB 1: THEORY ---
+# --- TAB 1: THEORY & NOMENCLATURE ---
 with tab_theory:
-    st.subheader("Napier's Equation & Orifice Construction")
-    st.pyplot(draw_orifice_schematic())
-    
-    st.markdown("---")
-    col1, col2 = st.columns(2)
+    col1, col2 = st.columns([1, 1.2])
     
     with col1:
+        st.subheader("Orifice Construction")
+        st.pyplot(draw_orifice_schematic())
+        
+        st.subheader("General Equation")
+        st.latex(r"L = F_T \times F_S \times C_V \times h \times \sqrt{(P_{in} - P_{out})(P_{in} + P_{out})}")
+        
+    with col2:
         st.subheader("Nomenclature")
         st.markdown("""
         * **L**: Actual loss of steam across the system (kg/hr)
@@ -201,21 +225,15 @@ with tab_theory:
         * **h**: Operating hours of the trap
         """)
         
-        st.subheader("General Equation")
-        st.latex(r"L = F_T \times F_S \times C_V \times h \times \sqrt{(P_{in} - P_{out})(P_{in} + P_{out})}")
-        
-    with col2:
         st.subheader("System Factors")
-        st.markdown("**Failure Factor ($F_T$)**")
-        st.markdown("An empirical value. A trap blowing steam at full bore has a failure factor of 1.")
+        st.markdown("**Failure Factor (FT)**: An empirical value. A full-bore blowing trap has a factor of 1.")
         
-        st.markdown("**Service Factor ($F_S$)**")
+        st.markdown("**Service Factor (FS)**:")
         st.latex(r"F_S = \frac{2.1 \times (S - 1)}{S}")
-        st.markdown("- **Steam Mains**: Capacity Factor (S) = 3.0, resulting in $F_S$ = 1.4")
-        st.markdown("- **Process**: Capacity Factor (S) = 1.75, resulting in $F_S$ = 0.9")
+        st.markdown("- **Steam Mains**: Capacity Factor (S) = 3.0, resulting in FS = 1.4")
+        st.markdown("- **Process**: Capacity Factor (S) = 1.75, resulting in FS = 0.9")
         
-        st.markdown("**Flow Coefficient ($C_V$)**")
-        st.latex(r"C_V = 22.1 \times d^2")
+        st.markdown("**Flow Coefficient (CV)**: $C_V = 22.1 \times d^2$")
 
     st.markdown("---")
     st.subheader("Application Specific Formulas")
@@ -230,13 +248,15 @@ with tab_theory:
         st.markdown("Condition B: $P_{out} < P_{in}/2$")
         st.latex(r"Loss = 0.25 \times 22.1 \times d^2 \times \sqrt{(P_{in} - P_{in}/2)(P_{in} + P_{in}/2)}")
 
-# --- TAB 2: INPUTS ---
+# --- TAB 2: INPUTS & CONVERSIONS ---
 with tab_inputs:
-    col_in, col_conv = st.columns([1.2, 1])
+    col_in, col_conv = st.columns([1.3, 1])
+    
     with col_in:
         st.subheader("Operating Conditions")
-        p_in_barg = st.number_input("Inlet Pressure (barg)", min_value=0.0, value=10.0, step=0.5)
-        p_out_barg = st.number_input("Outlet Pressure (barg)", min_value=0.0, value=2.0, step=0.5)
+        c1, c2 = st.columns(2)
+        p_in_barg = c1.number_input("Inlet Pressure (barg)", min_value=0.0, value=10.0, step=0.5)
+        p_out_barg = c2.number_input("Outlet Pressure (barg)", min_value=0.0, value=2.0, step=0.5)
         hours = st.number_input("Operating Hours per Year", min_value=1, max_value=8760, value=8000, step=100)
         
         st.markdown("---")
@@ -246,21 +266,22 @@ with tab_inputs:
         f_s = calc_service_factor(s_factor)
             
         st.markdown("---")
-        st.subheader("Select Trap Models")
+        st.subheader("Trap Selection")
         selected_products = st.multiselect("Select Product(s)", df['Product Name'].unique(), default=["SOFT31"])
         filtered_df = df[df['Product Name'].isin(selected_products)]
         
         if not filtered_df.empty:
-            selected_sizes = st.multiselect("Filter by Size (DN)", filtered_df['Size (DN)'].unique(), default=filtered_df['Size (DN)'].unique())
+            c3, c4 = st.columns(2)
+            selected_sizes = c3.multiselect("Filter by Size (DN)", filtered_df['Size (DN)'].unique(), default=filtered_df['Size (DN)'].unique())
             filtered_df = filtered_df[filtered_df['Size (DN)'].isin(selected_sizes)]
             
-            selected_dp = st.multiselect("Filter by Differential Pressure (bar g)", filtered_df['Differential Pressure (bar g)'].unique(), default=filtered_df['Differential Pressure (bar g)'].unique())
+            selected_dp = c4.multiselect("Filter by Differential Pressure (bar g)", filtered_df['Differential Pressure (bar g)'].unique(), default=filtered_df['Differential Pressure (bar g)'].unique())
             filtered_df = filtered_df[filtered_df['Differential Pressure (bar g)'].isin(selected_dp)]
             
-        st.write("Selected Traps Data", filtered_df)
+        st.write("Selected Configuration Matrix", filtered_df)
 
     with col_conv:
-        st.subheader("Converted Imperial Values")
+        st.subheader("Converted Imperial Parameters")
         p_in_psi = p_in_barg * 14.5038
         p_out_psi = p_out_barg * 14.5038
         
@@ -276,7 +297,7 @@ with tab_inputs:
 
 # --- TAB 3: CALCULATIONS ---
 with tab_calcs:
-    st.subheader("Computed Steam Loss")
+    st.subheader("Computed Steam Loss Data")
     if not filtered_df.empty:
         results = []
         for index, row in filtered_df.iterrows():
@@ -300,70 +321,73 @@ with tab_calcs:
 
 # --- TAB 4: GRAPH VISUALS ---
 with tab_visuals:
-    st.subheader("Sensitivity Analysis")
+    st.subheader("Sensitivity Analysis Dashboard")
     
     if not filtered_df.empty:
         unique_traps = filtered_df.drop_duplicates(subset=['Product Name', 'Size (DN)', 'Orifice Size (mm)'])
-        trap_options = {}
-        for index, row in unique_traps.iterrows():
-            name_label = f"{row['Product Name']} - DN{row['Size (DN)']} (Orifice: {row['Orifice Size (mm)']}mm, DP: {row['Differential Pressure (bar g)']}bar)"
-            trap_options[name_label] = row
+        trap_options = {f"{row['Product Name']} - DN{row['Size (DN)']} (Orifice: {row['Orifice Size (mm)']}mm, DP: {row['Differential Pressure (bar g)']}bar)": row for index, row in unique_traps.iterrows()}
             
-        st.markdown("### Visualization Controls")
-        col_v1, col_v2, col_v3 = st.columns(3)
-        
-        with col_v1:
-            selected_trap_name = st.selectbox("Select Trap to Visualize", list(trap_options.keys()))
-        with col_v2:
-            viz_p_out = st.slider("Select Back Pressure (Pout) for Wear Analysis (barg)", min_value=0.0, max_value=10.0, value=2.0, step=0.5)
-        with col_v3:
-            standard_pins = st.multiselect("Select Inlet Pressures (barg)", [4.5, 10.0, 13.0, 14.0, 21.0], default=[4.5, 10.0, 13.0, 14.0, 21.0])
+        with st.container():
+            st.markdown("#### Visualization Controls")
+            
+            row1_col1, row1_col2 = st.columns([1, 1])
+            with row1_col1:
+                selected_trap_name = st.selectbox("Select Trap Configuration", list(trap_options.keys()))
+            with row1_col2:
+                viz_p_out = st.slider("Select Back Pressure (Pout) for Wear Analysis (barg)", min_value=0.0, max_value=10.0, value=2.0, step=0.5)
+            
+            row2_col1, row2_col2 = st.columns([1, 1])
+            with row2_col1:
+                standard_pins = st.multiselect("Standard Inlet Pressures (barg)", [4.5, 10.0, 13.0, 14.0, 21.0], default=[4.5, 10.0, 13.0, 14.0, 21.0])
+            with row2_col2:
+                custom_pin = st.number_input("Custom Inlet Pressure (barg)", min_value=0.0, value=0.0, step=0.5, help="Set above 0.0 to overlay a custom inlet pressure curve.")
+
+        # Combine selected pins for plotting
+        plot_pins = list(standard_pins)
+        if custom_pin > 0 and custom_pin not in plot_pins:
+            plot_pins.append(custom_pin)
+        plot_pins.sort()
             
         selected_trap = trap_options[selected_trap_name]
         d_mm = selected_trap['Orifice Size (mm)']
         
-        st.markdown(f"**Analysis for: {selected_trap_name}**")
+        st.markdown(f"**Current Analysis:** {selected_trap_name}")
+        
         col_graph1, col_graph2 = st.columns(2)
         
         # --- Graph 1: Loss vs Variable Back Pressure ---
         with col_graph1:
-            fig1, ax1 = plt.subplots(figsize=(8, 5), facecolor='white')
-            ax1.set_facecolor('white')
+            fig1, ax1 = plt.subplots(figsize=(7, 5), facecolor='white')
             p_out_range = np.linspace(0, 8, 100)
             
-            if standard_pins:
-                for pin in standard_pins:
+            if plot_pins:
+                for pin in plot_pins:
                     loss_range_pout = [calc_steam_loss(d_mm, pin, pout, application) for pout in p_out_range]
-                    ax1.plot(p_out_range, loss_range_pout, linewidth=2, label=f'Pin = {pin} barg')
+                    ax1.plot(p_out_range, loss_range_pout, linewidth=2.5, label=f'Pin = {pin} barg')
             
-            ax1.axvline(x=viz_p_out, color='gray', linestyle='--', alpha=0.5, label='Selected Pout')
-            ax1.set_xlabel("Back Pressure Pout (barg)", fontweight='bold')
-            ax1.set_ylabel("Steam Loss (kg/hr)", fontweight='bold')
-            ax1.set_title(f"Loss vs. Back Pressure\n(Fixed Orifice: {d_mm}mm)", fontweight='bold')
-            ax1.grid(True, linestyle='--', alpha=0.7)
-            ax1.legend()
+            ax1.axvline(x=viz_p_out, color='#7f8c8d', linestyle='--', linewidth=1.5, alpha=0.8, label=f'Selected Pout ({viz_p_out})')
+            style_axis(ax1, f"Loss vs. Back Pressure\n(Fixed Orifice: {d_mm}mm)", "Back Pressure Pout (barg)", "Steam Loss (kg/hr)")
+            ax1.legend(frameon=True, facecolor='white', edgecolor='#eeeeee')
+            plt.tight_layout()
             st.pyplot(fig1)
 
         # --- Graph 2: Loss vs Orifice Wear ---
         with col_graph2:
-            fig2, ax2 = plt.subplots(figsize=(8, 5), facecolor='white')
-            ax2.set_facecolor('white')
+            fig2, ax2 = plt.subplots(figsize=(7, 5), facecolor='white')
             dia_range = np.linspace(1.0, max(10.0, d_mm * 2.0), 100)
             
-            if standard_pins:
-                for pin in standard_pins:
+            if plot_pins:
+                for pin in plot_pins:
                     loss_range_dia = [calc_steam_loss(d, pin, viz_p_out, application) for d in dia_range]
-                    ax2.plot(dia_range, loss_range_dia, linewidth=2, label=f'Pin = {pin} barg')
+                    ax2.plot(dia_range, loss_range_dia, linewidth=2.5, label=f'Pin = {pin} barg')
             
             current_loss_viz = calc_steam_loss(d_mm, p_in_barg, viz_p_out, application)
-            ax2.plot(d_mm, current_loss_viz, marker='*', markersize=12, color='black', label=f'Op Point (@ {p_in_barg} barg)')
+            ax2.plot(d_mm, current_loss_viz, marker='*', markersize=14, color='#2c3e50', label=f'Op Point (@ {p_in_barg} barg)')
             
-            ax2.set_xlabel("Orifice Diameter (mm)", fontweight='bold')
-            ax2.set_ylabel("Steam Loss (kg/hr)", fontweight='bold')
-            ax2.set_title(f"Loss vs. Orifice Wear\n(Fixed Pout: {viz_p_out} barg)", fontweight='bold')
-            ax2.grid(True, linestyle='--', alpha=0.7)
-            ax2.legend()
+            style_axis(ax2, f"Loss vs. Orifice Wear\n(Fixed Pout: {viz_p_out} barg)", "Orifice Diameter (mm)", "Steam Loss (kg/hr)")
+            ax2.legend(frameon=True, facecolor='white', edgecolor='#eeeeee')
+            plt.tight_layout()
             st.pyplot(fig2)
             
     else:
-        st.write("No traps selected for visualization.")
+        st.info("Please select trap configurations in the 'Inputs & Conversions' tab to generate visualizations.")
