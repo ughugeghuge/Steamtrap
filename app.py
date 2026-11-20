@@ -150,9 +150,9 @@ def calc_steam_loss(d_mm, p_in_barg, p_out_barg, application):
 # -----------------------------------------------------------------------------
 def style_axis(ax, title, xlabel, ylabel):
     """Applies clean UI/UX styling to Matplotlib axes"""
-    ax.set_title(title, fontsize=13, fontweight='bold', pad=15)
-    ax.set_xlabel(xlabel, fontsize=11, fontweight='500', color='#333333')
-    ax.set_ylabel(ylabel, fontsize=11, fontweight='500', color='#333333')
+    ax.set_title(title, fontsize=14, fontweight='bold', pad=15)
+    ax.set_xlabel(xlabel, fontsize=12, fontweight='500', color='#333333')
+    ax.set_ylabel(ylabel, fontsize=12, fontweight='500', color='#333333')
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     ax.spines['left'].set_color('#cccccc')
@@ -342,6 +342,23 @@ with tab_visuals:
             with row2_col2:
                 custom_pin = st.number_input("Custom Inlet Pressure (barg)", min_value=0.0, value=0.0, step=0.5, help="Set above 0.0 to overlay a custom inlet pressure curve.")
 
+            st.markdown("#### Axis Scaling Controls")
+            # --- Graph 1 Scaling Controls ---
+            st.markdown("**Graph 1: Loss vs. Back Pressure**")
+            g1c1, g1c2, g1c3, g1c4 = st.columns(4)
+            g1_x_min = g1c1.number_input("X Min (barg)", value=0.0, step=1.0)
+            g1_x_max = g1c2.number_input("X Max (barg)", value=10.0, step=1.0)
+            g1_y_min = g1c3.number_input("Y Min (kg/hr)", value=0.0, step=10.0, key='g1ymin')
+            g1_y_max = g1c4.number_input("Y Max (kg/hr)", value=250.0, step=50.0, key='g1ymax')
+
+            # --- Graph 2 Scaling Controls ---
+            st.markdown("**Graph 2: Loss vs. Orifice Wear**")
+            g2c1, g2c2, g2c3, g2c4 = st.columns(4)
+            g2_x_min = g2c1.number_input("X Min (mm)", value=0.0, step=1.0)
+            g2_x_max = g2c2.number_input("X Max (mm)", value=15.0, step=1.0)
+            g2_y_min = g2c3.number_input("Y Min (kg/hr)", value=0.0, step=50.0, key='g2ymin')
+            g2_y_max = g2c4.number_input("Y Max (kg/hr)", value=1500.0, step=100.0, key='g2ymax')
+
         # Combine selected pins for plotting
         plot_pins = list(standard_pins)
         if custom_pin > 0 and custom_pin not in plot_pins:
@@ -352,42 +369,49 @@ with tab_visuals:
         d_mm = selected_trap['Orifice Size (mm)']
         
         st.markdown(f"**Current Analysis:** {selected_trap_name}")
-        
-        col_graph1, col_graph2 = st.columns(2)
+        st.markdown("---")
         
         # --- Graph 1: Loss vs Variable Back Pressure ---
-        with col_graph1:
-            fig1, ax1 = plt.subplots(figsize=(7, 5), facecolor='white')
-            p_out_range = np.linspace(0, 8, 100)
-            
-            if plot_pins:
-                for pin in plot_pins:
-                    loss_range_pout = [calc_steam_loss(d_mm, pin, pout, application) for pout in p_out_range]
-                    ax1.plot(p_out_range, loss_range_pout, linewidth=2.5, label=f'Pin = {pin} barg')
-            
-            ax1.axvline(x=viz_p_out, color='#7f8c8d', linestyle='--', linewidth=1.5, alpha=0.8, label=f'Selected Pout ({viz_p_out})')
-            style_axis(ax1, f"Loss vs. Back Pressure\n(Fixed Orifice: {d_mm}mm)", "Back Pressure Pout (barg)", "Steam Loss (kg/hr)")
-            ax1.legend(frameon=True, facecolor='white', edgecolor='#eeeeee')
-            plt.tight_layout()
-            st.pyplot(fig1)
+        fig1, ax1 = plt.subplots(figsize=(10, 6), facecolor='white')
+        p_out_range = np.linspace(g1_x_min, g1_x_max, 100)
+        
+        if plot_pins:
+            for pin in plot_pins:
+                loss_range_pout = [calc_steam_loss(d_mm, pin, pout, application) for pout in p_out_range]
+                ax1.plot(p_out_range, loss_range_pout, linewidth=2.5, label=f'Pin = {pin} barg')
+        
+        ax1.axvline(x=viz_p_out, color='#7f8c8d', linestyle='--', linewidth=1.5, alpha=0.8, label=f'Selected Pout ({viz_p_out})')
+        style_axis(ax1, f"Loss vs. Back Pressure\n(Fixed Orifice: {d_mm}mm)", "Back Pressure Pout (barg)", "Steam Loss (kg/hr)")
+        
+        ax1.set_xlim(g1_x_min, g1_x_max)
+        ax1.set_ylim(g1_y_min, g1_y_max)
+        
+        # Place Legend at Bottom
+        ax1.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=len(plot_pins)+1, frameon=True, facecolor='white', edgecolor='#eeeeee')
+        st.pyplot(fig1, bbox_inches='tight')
 
+        st.markdown("<br><br>", unsafe_allow_html=True) # visual spacer between stacked charts
+        
         # --- Graph 2: Loss vs Orifice Wear ---
-        with col_graph2:
-            fig2, ax2 = plt.subplots(figsize=(7, 5), facecolor='white')
-            dia_range = np.linspace(1.0, max(10.0, d_mm * 2.0), 100)
-            
-            if plot_pins:
-                for pin in plot_pins:
-                    loss_range_dia = [calc_steam_loss(d, pin, viz_p_out, application) for d in dia_range]
-                    ax2.plot(dia_range, loss_range_dia, linewidth=2.5, label=f'Pin = {pin} barg')
-            
-            current_loss_viz = calc_steam_loss(d_mm, p_in_barg, viz_p_out, application)
-            ax2.plot(d_mm, current_loss_viz, marker='*', markersize=14, color='#2c3e50', label=f'Op Point (@ {p_in_barg} barg)')
-            
-            style_axis(ax2, f"Loss vs. Orifice Wear\n(Fixed Pout: {viz_p_out} barg)", "Orifice Diameter (mm)", "Steam Loss (kg/hr)")
-            ax2.legend(frameon=True, facecolor='white', edgecolor='#eeeeee')
-            plt.tight_layout()
-            st.pyplot(fig2)
+        fig2, ax2 = plt.subplots(figsize=(10, 6), facecolor='white')
+        dia_range = np.linspace(max(1.0, g2_x_min), g2_x_max, 100)
+        
+        if plot_pins:
+            for pin in plot_pins:
+                loss_range_dia = [calc_steam_loss(d, pin, viz_p_out, application) for d in dia_range]
+                ax2.plot(dia_range, loss_range_dia, linewidth=2.5, label=f'Pin = {pin} barg')
+        
+        current_loss_viz = calc_steam_loss(d_mm, p_in_barg, viz_p_out, application)
+        ax2.plot(d_mm, current_loss_viz, marker='*', markersize=14, color='#2c3e50', label=f'Op Point (@ {p_in_barg} barg)')
+        
+        style_axis(ax2, f"Loss vs. Orifice Wear\n(Fixed Pout: {viz_p_out} barg)", "Orifice Diameter (mm)", "Steam Loss (kg/hr)")
+        
+        ax2.set_xlim(g2_x_min, g2_x_max)
+        ax2.set_ylim(g2_y_min, g2_y_max)
+        
+        # Place Legend at Bottom
+        ax2.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=len(plot_pins)+1, frameon=True, facecolor='white', edgecolor='#eeeeee')
+        st.pyplot(fig2, bbox_inches='tight')
             
     else:
         st.info("Please select trap configurations in the 'Inputs & Conversions' tab to generate visualizations.")
