@@ -131,7 +131,6 @@ def calc_service_factor(S):
 def calc_steam_loss(d_mm, p_in_barg, p_out_barg, application, f_t=1.0, mains_pout_mode="Use Given Pout"):
     """
     Calculates steam loss natively in kg/hr using the true physical Napier's Equation.
-    Corrects the empirical formula error by calculating true lb/hr max flow and converting to kg/hr.
     """
     if d_mm <= 0: return 0.0
     d_in = d_mm / 25.4
@@ -159,11 +158,11 @@ def calc_steam_loss(d_mm, p_in_barg, p_out_barg, application, f_t=1.0, mains_pou
     # Convert lb/hr to kg/hr
     w_kg_hr = w_lb_hr * 0.453592
     
-    # Apply Failure Factor (and Service Factors if required by the model logic)
-    if application == "Steam Mains & Headers":
-        return f_t * 1.4 * w_kg_hr
-    else:
-        return f_t * 0.25 * w_kg_hr
+    # Determine True Service Factor (FS)
+    f_s = 1.4 if application == "Steam Mains & Headers" else 0.9
+    
+    # Return Loss scaled by FT and FS
+    return f_t * f_s * w_kg_hr
 
 # -----------------------------------------------------------------------------
 # 3. Chart Design Functions 
@@ -255,9 +254,9 @@ with tab_theory:
     with col4:
         st.markdown("**2. Process Steam Traps**")
         st.markdown("Condition A: $P_{out} \ge P_{in}/2$")
-        st.latex(r"Loss = F_T \times 0.25 \times W_{kg/hr}(P_{in}, P_{out})")
+        st.latex(r"Loss = F_T \times 0.9 \times W_{kg/hr}(P_{in}, P_{out})")
         st.markdown("Condition B: $P_{out} < P_{in}/2$")
-        st.latex(r"Loss = F_T \times 0.25 \times W_{kg/hr}(P_{in}, P_{in}/2)")
+        st.latex(r"Loss = F_T \times 0.9 \times W_{kg/hr}(P_{in}, P_{in}/2)")
 
 # --- TAB 2: INPUTS & CONVERSIONS ---
 with tab_inputs:
