@@ -127,7 +127,7 @@ def calc_service_factor(S):
     if S <= 0: return 0
     return 2.1 * (S - 1) / S
 
-def calc_steam_loss(d_mm, p_in_barg, p_out_barg, application):
+def calc_steam_loss(d_mm, p_in_barg, p_out_barg, application, f_t=1.0):
     if d_mm <= 0: return 0.0
     d_in = d_mm / 25.4
     p_in_psi = p_in_barg * 14.5038
@@ -136,13 +136,13 @@ def calc_steam_loss(d_mm, p_in_barg, p_out_barg, application):
     
     if application == "Steam Mains & Headers":
         if p_out_psi >= p_in_psi: return 0.0
-        return 1.4 * cv * np.sqrt((p_in_psi - p_out_psi) * (p_in_psi + p_out_psi))
+        return f_t * 1.4 * cv * np.sqrt((p_in_psi - p_out_psi) * (p_in_psi + p_out_psi))
         
     elif application == "Process":
         if p_out_psi >= (p_in_psi / 2):
-            return 0.25 * cv * np.sqrt((p_in_psi - p_out_psi) * (p_in_psi + p_out_psi))
+            return f_t * 0.25 * cv * np.sqrt((p_in_psi - p_out_psi) * (p_in_psi + p_out_psi))
         else:
-            return 0.25 * cv * np.sqrt((p_in_psi - p_in_psi/2) * (p_in_psi + p_in_psi/2))
+            return f_t * 0.25 * cv * np.sqrt((p_in_psi - p_in_psi/2) * (p_in_psi + p_in_psi/2))
     return 0.0
 
 # -----------------------------------------------------------------------------
@@ -164,21 +164,16 @@ def draw_orifice_schematic():
     fig, ax = plt.subplots(figsize=(7, 3), facecolor='white')
     ax.set_facecolor('white')
     
-    # Draw pipe
     ax.plot([0, 10], [3, 3], 'k-', lw=2.5)
     ax.plot([0, 10], [1, 1], 'k-', lw=2.5)
-    
-    # Draw orifice
     ax.add_patch(patches.Rectangle((4.8, 2.3), 0.4, 0.7, facecolor='#7f8c8d', edgecolor='none'))
     ax.add_patch(patches.Rectangle((4.8, 1.0), 0.4, 0.7, facecolor='#7f8c8d', edgecolor='none'))
     
-    # Arrows
     ax.arrow(1, 2, 2, 0, head_width=0.2, head_length=0.3, fc='#3498db', ec='#3498db')
     ax.arrow(1.5, 2.5, 2, 0, head_width=0.15, head_length=0.2, fc='#AED6F1', ec='#AED6F1')
     ax.arrow(1.5, 1.5, 2, 0, head_width=0.15, head_length=0.2, fc='#AED6F1', ec='#AED6F1')
     ax.arrow(5.5, 2, 2, 0, head_width=0.2, head_length=0.3, fc='#3498db', ec='#3498db')
     
-    # Text
     ax.text(2, 3.2, 'Inlet Pressure (Pin)', fontsize=11, color='#c0392b', fontweight='bold', ha='center')
     ax.text(8, 3.2, 'Outlet Pressure (Pout)', fontsize=11, color='#27ae60', fontweight='bold', ha='center')
     ax.text(5, 0.6, 'Orifice Diameter (D)', fontsize=11, color='#2c3e50', fontweight='bold', ha='center')
@@ -226,7 +221,10 @@ with tab_theory:
         """)
         
         st.subheader("System Factors")
-        st.markdown("**Failure Factor (FT)**: An empirical value. A full-bore blowing trap has a factor of 1.")
+        st.markdown("**Failure Factor (FT)** is based on the trap's condition:")
+        st.markdown("- **Blowthrough (BT)**: Trap blowing full bore ($F_T = 1.0$)")
+        st.markdown("- **Leaking (LK)**: Partial leak ($F_T = 0.25$)")
+        st.markdown("- **Rapid Cycle (RC)**: Motor boating / cycling ($F_T = 0.2$)")
         
         st.markdown("**Service Factor (FS)**:")
         st.latex(r"F_S = \frac{2.1 \times (S - 1)}{S}")
@@ -240,13 +238,13 @@ with tab_theory:
     col3, col4 = st.columns(2)
     with col3:
         st.markdown("**1. Steam Traps Draining Steam Mains and Headers**")
-        st.latex(r"Loss = 1.4 \times 22.1 \times d^2 \times \sqrt{(P_{in} - P_{out})(P_{in} + P_{out})}")
+        st.latex(r"Loss = F_T \times 1.4 \times 22.1 \times d^2 \times \sqrt{(P_{in} - P_{out})(P_{in} + P_{out})}")
     with col4:
         st.markdown("**2. Process Steam Traps**")
         st.markdown("Condition A: $P_{out} \ge P_{in}/2$")
-        st.latex(r"Loss = 0.25 \times 22.1 \times d^2 \times \sqrt{(P_{in} - P_{out})(P_{in} + P_{out})}")
+        st.latex(r"Loss = F_T \times 0.25 \times 22.1 \times d^2 \times \sqrt{(P_{in} - P_{out})(P_{in} + P_{out})}")
         st.markdown("Condition B: $P_{out} < P_{in}/2$")
-        st.latex(r"Loss = 0.25 \times 22.1 \times d^2 \times \sqrt{(P_{in} - P_{in}/2)(P_{in} + P_{in}/2)}")
+        st.latex(r"Loss = F_T \times 0.25 \times 22.1 \times d^2 \times \sqrt{(P_{in} - P_{in}/2)(P_{in} + P_{in}/2)}")
 
 # --- TAB 2: INPUTS & CONVERSIONS ---
 with tab_inputs:
@@ -254,16 +252,26 @@ with tab_inputs:
     
     with col_in:
         st.subheader("Operating Conditions")
-        c1, c2 = st.columns(2)
+        c1, c2, c_hrs = st.columns(3)
         p_in_barg = c1.number_input("Inlet Pressure (barg)", min_value=0.0, value=10.0, step=0.5)
         p_out_barg = c2.number_input("Outlet Pressure (barg)", min_value=0.0, value=2.0, step=0.5)
-        hours = st.number_input("Operating Hours per Year", min_value=1, max_value=8760, value=8000, step=100)
+        hours = c_hrs.number_input("Operating Hours per Year", min_value=1, max_value=8760, value=8000, step=100)
         
         st.markdown("---")
-        st.subheader("Application Setup")
-        application = st.radio("Application Type", ["Steam Mains & Headers", "Process"])
+        st.subheader("Application & Failure Setup")
+        c_app, c_fail = st.columns(2)
+        application = c_app.radio("Application Type", ["Steam Mains & Headers", "Process"])
+        failure_type = c_fail.radio("Failure Type (Status Code)", ["Blowthrough (BT)", "Leaking (LK)", "Rapid Cycle (RC)"])
+        
         s_factor = st.number_input("Capacity Factor (S)", value=3.0 if application == "Steam Mains & Headers" else 1.75)
         f_s = calc_service_factor(s_factor)
+        
+        if failure_type == "Blowthrough (BT)":
+            f_t = 1.0
+        elif failure_type == "Leaking (LK)":
+            f_t = 0.25
+        else:
+            f_t = 0.2
             
         st.markdown("---")
         st.subheader("Trap Selection")
@@ -288,6 +296,7 @@ with tab_inputs:
         st.metric("Inlet Pressure (Pin)", f"{p_in_psi:.2f} psi")
         st.metric("Outlet Pressure (Pout)", f"{p_out_psi:.2f} psi")
         st.metric("Service Factor (Fs)", f"{f_s:.3f}")
+        st.metric("Failure Factor (FT)", f"{f_t}")
         
         if application == "Process":
             if p_out_psi >= (p_in_psi / 2):
@@ -304,7 +313,7 @@ with tab_calcs:
             d_mm = row['Orifice Size (mm)']
             d_in = d_mm / 25.4
             cv = 22.1 * (d_in ** 2)
-            loss_hr = calc_steam_loss(d_mm, p_in_barg, p_out_barg, application)
+            loss_hr = calc_steam_loss(d_mm, p_in_barg, p_out_barg, application, f_t)
             loss_yr = loss_hr * hours
             results.append({
                 "Product": row['Product Name'],
@@ -343,7 +352,6 @@ with tab_visuals:
                 custom_pin = st.number_input("Custom Inlet Pressure (barg)", min_value=0.0, value=0.0, step=0.5, help="Set above 0.0 to overlay a custom inlet pressure curve.")
 
             st.markdown("#### Axis Scaling Controls")
-            # --- Graph 1 Scaling Controls ---
             st.markdown("**Graph 1: Loss vs. Back Pressure**")
             g1c1, g1c2, g1c3, g1c4 = st.columns(4)
             g1_x_min = g1c1.number_input("X Min (barg)", value=0.0, step=1.0)
@@ -351,7 +359,6 @@ with tab_visuals:
             g1_y_min = g1c3.number_input("Y Min (kg/hr)", value=0.0, step=10.0, key='g1ymin')
             g1_y_max = g1c4.number_input("Y Max (kg/hr)", value=250.0, step=50.0, key='g1ymax')
 
-            # --- Graph 2 Scaling Controls ---
             st.markdown("**Graph 2: Loss vs. Orifice Wear**")
             g2c1, g2c2, g2c3, g2c4 = st.columns(4)
             g2_x_min = g2c1.number_input("X Min (mm)", value=0.0, step=1.0)
@@ -359,7 +366,6 @@ with tab_visuals:
             g2_y_min = g2c3.number_input("Y Min (kg/hr)", value=0.0, step=50.0, key='g2ymin')
             g2_y_max = g2c4.number_input("Y Max (kg/hr)", value=1500.0, step=100.0, key='g2ymax')
 
-        # Combine selected pins for plotting
         plot_pins = list(standard_pins)
         if custom_pin > 0 and custom_pin not in plot_pins:
             plot_pins.append(custom_pin)
@@ -377,20 +383,18 @@ with tab_visuals:
         
         if plot_pins:
             for pin in plot_pins:
-                loss_range_pout = [calc_steam_loss(d_mm, pin, pout, application) for pout in p_out_range]
+                loss_range_pout = [calc_steam_loss(d_mm, pin, pout, application, f_t) for pout in p_out_range]
                 ax1.plot(p_out_range, loss_range_pout, linewidth=2.5, label=f'Pin = {pin} barg')
         
         ax1.axvline(x=viz_p_out, color='#7f8c8d', linestyle='--', linewidth=1.5, alpha=0.8, label=f'Selected Pout ({viz_p_out})')
-        style_axis(ax1, f"Loss vs. Back Pressure\n(Fixed Orifice: {d_mm}mm)", "Back Pressure Pout (barg)", "Steam Loss (kg/hr)")
+        style_axis(ax1, f"Loss vs. Back Pressure\n(Fixed Orifice: {d_mm}mm, FT: {f_t})", "Back Pressure Pout (barg)", "Steam Loss (kg/hr)")
         
         ax1.set_xlim(g1_x_min, g1_x_max)
         ax1.set_ylim(g1_y_min, g1_y_max)
-        
-        # Place Legend at Bottom
         ax1.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=len(plot_pins)+1, frameon=True, facecolor='white', edgecolor='#eeeeee')
         st.pyplot(fig1, bbox_inches='tight')
 
-        st.markdown("<br><br>", unsafe_allow_html=True) # visual spacer between stacked charts
+        st.markdown("<br><br>", unsafe_allow_html=True)
         
         # --- Graph 2: Loss vs Orifice Wear ---
         fig2, ax2 = plt.subplots(figsize=(10, 6), facecolor='white')
@@ -398,18 +402,16 @@ with tab_visuals:
         
         if plot_pins:
             for pin in plot_pins:
-                loss_range_dia = [calc_steam_loss(d, pin, viz_p_out, application) for d in dia_range]
+                loss_range_dia = [calc_steam_loss(d, pin, viz_p_out, application, f_t) for d in dia_range]
                 ax2.plot(dia_range, loss_range_dia, linewidth=2.5, label=f'Pin = {pin} barg')
         
-        current_loss_viz = calc_steam_loss(d_mm, p_in_barg, viz_p_out, application)
+        current_loss_viz = calc_steam_loss(d_mm, p_in_barg, viz_p_out, application, f_t)
         ax2.plot(d_mm, current_loss_viz, marker='*', markersize=14, color='#2c3e50', label=f'Op Point (@ {p_in_barg} barg)')
         
-        style_axis(ax2, f"Loss vs. Orifice Wear\n(Fixed Pout: {viz_p_out} barg)", "Orifice Diameter (mm)", "Steam Loss (kg/hr)")
+        style_axis(ax2, f"Loss vs. Orifice Wear\n(Fixed Pout: {viz_p_out} barg, FT: {f_t})", "Orifice Diameter (mm)", "Steam Loss (kg/hr)")
         
         ax2.set_xlim(g2_x_min, g2_x_max)
         ax2.set_ylim(g2_y_min, g2_y_max)
-        
-        # Place Legend at Bottom
         ax2.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=len(plot_pins)+1, frameon=True, facecolor='white', edgecolor='#eeeeee')
         st.pyplot(fig2, bbox_inches='tight')
             
