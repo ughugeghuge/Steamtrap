@@ -185,6 +185,20 @@ def draw_orifice_schematic():
     plt.tight_layout()
     return fig
 
+# Mapping dictionary for Failures
+fail_options = {
+    "Blowthrough (BT)": 1.0,
+    "Leaking (LK)": 0.25,
+    "Rapid Cycle (RC)": 0.2
+}
+fail_line_styles = {
+    "Blowthrough (BT)": "-",
+    "Leaking (LK)": "--",
+    "Rapid Cycle (RC)": ":"
+}
+# Professional Color Palette
+theme_colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2']
+
 # -----------------------------------------------------------------------------
 # 4. Main Streamlit Interface
 # -----------------------------------------------------------------------------
@@ -261,17 +275,11 @@ with tab_inputs:
         st.subheader("Application & Failure Setup")
         c_app, c_fail = st.columns(2)
         application = c_app.radio("Application Type", ["Steam Mains & Headers", "Process"])
-        failure_type = c_fail.radio("Failure Type (Status Code)", ["Blowthrough (BT)", "Leaking (LK)", "Rapid Cycle (RC)"])
+        failure_type = c_fail.radio("Current Failure Status", list(fail_options.keys()))
         
         s_factor = st.number_input("Capacity Factor (S)", value=3.0 if application == "Steam Mains & Headers" else 1.75)
         f_s = calc_service_factor(s_factor)
-        
-        if failure_type == "Blowthrough (BT)":
-            f_t = 1.0
-        elif failure_type == "Leaking (LK)":
-            f_t = 0.25
-        else:
-            f_t = 0.2
+        f_t = fail_options[failure_type]
             
         st.markdown("---")
         st.subheader("Trap Selection")
@@ -351,6 +359,9 @@ with tab_visuals:
             with row2_col2:
                 custom_pin = st.number_input("Custom Inlet Pressure (barg)", min_value=0.0, value=0.0, step=0.5, help="Set above 0.0 to overlay a custom inlet pressure curve.")
 
+            st.markdown("#### Failure State Analysis")
+            selected_fails = st.multiselect("Select Failure Types to Overlay", list(fail_options.keys()), default=list(fail_options.keys()))
+
             st.markdown("#### Axis Scaling Controls")
             st.markdown("**Graph 1: Loss vs. Back Pressure**")
             g1c1, g1c2, g1c3, g1c4 = st.columns(4)
@@ -381,17 +392,25 @@ with tab_visuals:
         fig1, ax1 = plt.subplots(figsize=(10, 6), facecolor='white')
         p_out_range = np.linspace(g1_x_min, g1_x_max, 100)
         
-        if plot_pins:
-            for pin in plot_pins:
-                loss_range_pout = [calc_steam_loss(d_mm, pin, pout, application, f_t) for pout in p_out_range]
-                ax1.plot(p_out_range, loss_range_pout, linewidth=2.5, label=f'Pin = {pin} barg')
+        if plot_pins and selected_fails:
+            for i, pin in enumerate(plot_pins):
+                c = theme_colors[i % len(theme_colors)]
+                for f_name in selected_fails:
+                    ft_val = fail_options[f_name]
+                    ls = fail_line_styles[f_name]
+                    label_str = f'Pin={pin} | {f_name.split()[0]}' if len(selected_fails) > 1 else f'Pin={pin} barg'
+                    
+                    loss_range_pout = [calc_steam_loss(d_mm, pin, pout, application, ft_val) for pout in p_out_range]
+                    ax1.plot(p_out_range, loss_range_pout, linewidth=2.5, color=c, linestyle=ls, label=label_str)
         
         ax1.axvline(x=viz_p_out, color='#7f8c8d', linestyle='--', linewidth=1.5, alpha=0.8, label=f'Selected Pout ({viz_p_out})')
-        style_axis(ax1, f"Loss vs. Back Pressure\n(Fixed Orifice: {d_mm}mm, FT: {f_t})", "Back Pressure Pout (barg)", "Steam Loss (kg/hr)")
+        style_axis(ax1, f"Loss vs. Back Pressure\n(Fixed Orifice: {d_mm}mm)", "Back Pressure Pout (barg)", "Steam Loss (kg/hr)")
         
         ax1.set_xlim(g1_x_min, g1_x_max)
         ax1.set_ylim(g1_y_min, g1_y_max)
-        ax1.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=len(plot_pins)+1, frameon=True, facecolor='white', edgecolor='#eeeeee')
+        
+        num_cols = len(plot_pins) if len(plot_pins) > 0 else 3
+        ax1.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=num_cols, frameon=True, facecolor='white', edgecolor='#eeeeee')
         st.pyplot(fig1, bbox_inches='tight')
 
         st.markdown("<br><br>", unsafe_allow_html=True)
@@ -400,19 +419,26 @@ with tab_visuals:
         fig2, ax2 = plt.subplots(figsize=(10, 6), facecolor='white')
         dia_range = np.linspace(max(1.0, g2_x_min), g2_x_max, 100)
         
-        if plot_pins:
-            for pin in plot_pins:
-                loss_range_dia = [calc_steam_loss(d, pin, viz_p_out, application, f_t) for d in dia_range]
-                ax2.plot(dia_range, loss_range_dia, linewidth=2.5, label=f'Pin = {pin} barg')
+        if plot_pins and selected_fails:
+            for i, pin in enumerate(plot_pins):
+                c = theme_colors[i % len(theme_colors)]
+                for f_name in selected_fails:
+                    ft_val = fail_options[f_name]
+                    ls = fail_line_styles[f_name]
+                    label_str = f'Pin={pin} | {f_name.split()[0]}' if len(selected_fails) > 1 else f'Pin={pin} barg'
+                    
+                    loss_range_dia = [calc_steam_loss(d, pin, viz_p_out, application, ft_val) for d in dia_range]
+                    ax2.plot(dia_range, loss_range_dia, linewidth=2.5, color=c, linestyle=ls, label=label_str)
         
+        # Current actual operating point (Uses global f_t from Tab 2)
         current_loss_viz = calc_steam_loss(d_mm, p_in_barg, viz_p_out, application, f_t)
-        ax2.plot(d_mm, current_loss_viz, marker='*', markersize=14, color='#2c3e50', label=f'Op Point (@ {p_in_barg} barg)')
+        ax2.plot(d_mm, current_loss_viz, marker='*', markersize=14, color='#2c3e50', label=f'Op Point (@ {p_in_barg} barg, {failure_type.split()[0]})')
         
-        style_axis(ax2, f"Loss vs. Orifice Wear\n(Fixed Pout: {viz_p_out} barg, FT: {f_t})", "Orifice Diameter (mm)", "Steam Loss (kg/hr)")
+        style_axis(ax2, f"Loss vs. Orifice Wear\n(Fixed Pout: {viz_p_out} barg)", "Orifice Diameter (mm)", "Steam Loss (kg/hr)")
         
         ax2.set_xlim(g2_x_min, g2_x_max)
         ax2.set_ylim(g2_y_min, g2_y_max)
-        ax2.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=len(plot_pins)+1, frameon=True, facecolor='white', edgecolor='#eeeeee')
+        ax2.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=num_cols, frameon=True, facecolor='white', edgecolor='#eeeeee')
         st.pyplot(fig2, bbox_inches='tight')
             
     else:
