@@ -128,20 +128,24 @@ def calc_service_factor(S):
     if S <= 0: return 0
     return 2.1 * (S - 1) / S
 
-def calc_steam_loss(d_mm, p_in_barg, p_out_barg, application, f_t=1.0):
+def calc_steam_loss(d_mm, p_in_barg, p_out_barg, application, f_t=1.0, mains_pout_mode="Use Given Pout"):
     """Calculates steam loss natively in kg/hr using absolute pressure."""
     if d_mm <= 0: return 0.0
     d_in = d_mm / 25.4
     
-    # CRITICAL UNIT FIX: Convert barg to Absolute Pressure (psia) for Napier's equation
     p_in_psia = (p_in_barg * 14.5038) + 14.696
     p_out_psia = (p_out_barg * 14.5038) + 14.696
     
     cv = 22.1 * (d_in ** 2)
     
     if application == "Steam Mains & Headers":
-        if p_out_psia >= p_in_psia: return 0.0
-        return f_t * 1.4 * cv * np.sqrt((p_in_psia - p_out_psia) * (p_in_psia + p_out_psia))
+        if mains_pout_mode == "Use Pout = Pin / 2":
+            effective_p_out_psia = p_in_psia / 2
+        else:
+            effective_p_out_psia = p_out_psia
+            
+        if effective_p_out_psia >= p_in_psia: return 0.0
+        return f_t * 1.4 * cv * np.sqrt((p_in_psia - effective_p_out_psia) * (p_in_psia + effective_p_out_psia))
         
     elif application == "Process":
         if p_out_psia >= (p_in_psia / 2):
@@ -178,7 +182,6 @@ def draw_orifice_schematic():
     plt.tight_layout()
     return fig
 
-# Mapping dictionaries
 fail_options = {
     "Blowthrough (BT)": 1.0,
     "Leaking (LK)": 0.25,
@@ -237,7 +240,10 @@ with tab_theory:
     col3, col4 = st.columns(2)
     with col3:
         st.markdown("**1. Steam Traps Draining Steam Mains and Headers**")
+        st.markdown("Condition 1: Using Given $P_{out}$")
         st.latex(r"Loss = F_T \times 1.4 \times 22.1 \times d^2 \times \sqrt{(P_{in} - P_{out})(P_{in} + P_{out})}")
+        st.markdown("Condition 2: $P_{out} = P_{in}/2$")
+        st.latex(r"Loss = F_T \times 1.4 \times 22.1 \times d^2 \times \sqrt{(P_{in} - P_{in}/2)(P_{in} + P_{in}/2)}")
     with col4:
         st.markdown("**2. Process Steam Traps**")
         st.markdown("Condition A: $P_{out} \ge P_{in}/2$")
@@ -258,10 +264,14 @@ with tab_inputs:
         
         st.markdown("---")
         st.subheader("Application & Failure Setup")
-        c_app, c_fail = st.columns(2)
+        c_app, c_fail, c_mains_opt = st.columns(3)
         application = c_app.radio("Application Type", ["Steam Mains & Headers", "Process"], key='in_app')
         failure_type = c_fail.radio("Current Failure Status", list(fail_options.keys()))
         
+        mains_pout_mode = "Use Given Pout"
+        if application == "Steam Mains & Headers":
+            mains_pout_mode = c_mains_opt.radio("Mains Pout Mode", ["Use Given Pout", "Use Pout = Pin / 2"])
+            
         s_factor = st.number_input("Capacity Factor (S)", value=3.0 if application == "Steam Mains & Headers" else 1.75)
         f_s = calc_service_factor(s_factor)
         f_t = fail_options[failure_type]
@@ -295,6 +305,8 @@ with tab_inputs:
                 st.info(f"Condition A Applied: Pout ({p_out_psia:.1f}) >= Pin/2 ({p_in_psia/2:.1f})")
             else:
                 st.info(f"Condition B Applied: Pout ({p_out_psia:.1f}) < Pin/2 ({p_in_psia/2:.1f})")
+        elif application == "Steam Mains & Headers" and mains_pout_mode == "Use Pout = Pin / 2":
+            st.info(f"Mains Override Applied: Using Pout = Pin/2 ({p_in_psia/2:.1f} psia) instead of given Pout.")
 
 # --- TAB 3: CALCULATIONS ---
 with tab_calcs:
@@ -305,7 +317,7 @@ with tab_calcs:
             d_mm = row['Orifice Size (mm)']
             d_in = d_mm / 25.4
             cv = 22.1 * (d_in ** 2)
-            loss_hr = calc_steam_loss(d_mm, p_in_barg, p_out_barg, application, f_t)
+            loss_hr = calc_steam_loss(d_mm, p_in_barg, p_out_barg, application, f_t, mains_pout_mode)
             loss_yr = loss_hr * hours
             results.append({
                 "Product": row['Product Name'],
@@ -330,21 +342,24 @@ with tab_visuals:
         
     with st.container():
         st.markdown("#### Independent Visualization Controls")
-        row1_col1, row1_col2 = st.columns([1, 1])
+        row1_col1, row1_col2, row1_col3 = st.columns([1, 1, 1])
         with row1_col1:
             viz_trap_name = st.selectbox("Select Any Trap to Visualize", list(trap_options_all.keys()))
             viz_app = st.radio("Application Setup", ["Steam Mains & Headers", "Process"])
         with row1_col2:
             viz_p_out = st.slider("Select Back Pressure (Pout) for Wear Analysis (barg)", min_value=0.0, max_value=10.0, value=2.0, step=0.5)
             viz_p_in_op = st.number_input("Operating Inlet Pressure (Pin) to mark on wear graph", min_value=0.0, value=10.0, step=0.5)
+        with row1_col3:
+            viz_mains_pout_mode = "Use Given Pout"
+            if viz_app == "Steam Mains & Headers":
+                viz_mains_pout_mode = st.radio("Mains Pout Mode", ["Use Given Pout", "Use Pout = Pin / 2"], key="viz_mains_mode")
+            viz_fails = st.multiselect("Select Failure Types to Overlay", list(fail_options.keys()), default=list(fail_options.keys()))
         
         row2_col1, row2_col2 = st.columns([1, 1])
         with row2_col1:
             viz_pins = st.multiselect("Standard Inlet Pressures (barg)", [4.5, 10.0, 13.0, 14.0, 21.0], default=[4.5, 10.0, 13.0, 14.0, 21.0])
         with row2_col2:
             viz_custom_pin = st.number_input("Custom Inlet Pressure (barg)", min_value=0.0, value=0.0, step=0.5)
-            
-        viz_fails = st.multiselect("Select Failure Types to Overlay", list(fail_options.keys()), default=list(fail_options.keys()))
 
         with st.expander("Axis Scaling Controls (Optional - Graphs are fully interactive)"):
             st.markdown("Use these inputs to strictly clamp the axis boundaries if you do not want to use your mouse to zoom/pan.")
@@ -377,11 +392,12 @@ with tab_visuals:
                 ft_val = fail_options[f_name]
                 ls = fail_plotly_styles[f_name]
                 label_str = f'Pin={pin} | {f_name.split()[0]}' if len(viz_fails) > 1 else f'Pin={pin} barg'
-                loss_range_pout = [calc_steam_loss(d_mm, pin, pout, viz_app, ft_val) for pout in p_out_range]
+                loss_range_pout = [calc_steam_loss(d_mm, pin, pout, viz_app, ft_val, viz_mains_pout_mode) for pout in p_out_range]
                 
                 fig1.add_trace(go.Scatter(x=p_out_range, y=loss_range_pout, mode='lines', name=label_str, line=dict(color=c, dash=ls, width=2.5)))
     
-    fig1.add_vline(x=viz_p_out, line_width=1.5, line_dash="dash", line_color="gray", annotation_text=f" Selected Pout ({viz_p_out})")
+    if not (viz_app == "Steam Mains & Headers" and viz_mains_pout_mode == "Use Pout = Pin / 2"):
+        fig1.add_vline(x=viz_p_out, line_width=1.5, line_dash="dash", line_color="gray", annotation_text=f" Selected Pout ({viz_p_out})")
     
     fig1.update_layout(
         title=f"Loss vs. Back Pressure (Fixed Orifice: {d_mm}mm)",
@@ -407,15 +423,15 @@ with tab_visuals:
                 ft_val = fail_options[f_name]
                 ls = fail_plotly_styles[f_name]
                 label_str = f'Pin={pin} | {f_name.split()[0]}' if len(viz_fails) > 1 else f'Pin={pin} barg'
-                loss_range_dia = [calc_steam_loss(d, pin, viz_p_out, viz_app, ft_val) for d in dia_range]
+                loss_range_dia = [calc_steam_loss(d, pin, viz_p_out, viz_app, ft_val, viz_mains_pout_mode) for d in dia_range]
                 
                 fig2.add_trace(go.Scatter(x=dia_range, y=loss_range_dia, mode='lines', name=label_str, line=dict(color=c, dash=ls, width=2.5)))
     
-    current_loss_viz = calc_steam_loss(d_mm, viz_p_in_op, viz_p_out, viz_app, fail_options["Blowthrough (BT)"])
+    current_loss_viz = calc_steam_loss(d_mm, viz_p_in_op, viz_p_out, viz_app, fail_options["Blowthrough (BT)"], viz_mains_pout_mode)
     fig2.add_trace(go.Scatter(x=[d_mm], y=[current_loss_viz], mode='markers', name=f'Op Point (@ {viz_p_in_op} barg, BT)', marker=dict(color='black', size=14, symbol='star')))
 
     fig2.update_layout(
-        title=f"Loss vs. Orifice Wear (Fixed Pout: {viz_p_out} barg)",
+        title=f"Loss vs. Orifice Wear (Fixed Pout: {viz_p_out} barg)" if not (viz_app == "Steam Mains & Headers" and viz_mains_pout_mode == "Use Pout = Pin / 2") else f"Loss vs. Orifice Wear (Using Pout = Pin/2)",
         xaxis_title="Orifice Diameter (mm)",
         yaxis_title="Steam Loss (kg/hr)",
         xaxis=dict(range=[0, g2_x_max]),
