@@ -129,21 +129,25 @@ def calc_service_factor(S):
     return 2.1 * (S - 1) / S
 
 def calc_steam_loss(d_mm, p_in_barg, p_out_barg, application, f_t=1.0):
+    """Calculates steam loss natively in kg/hr using absolute pressure."""
     if d_mm <= 0: return 0.0
     d_in = d_mm / 25.4
-    p_in_psi = p_in_barg * 14.5038
-    p_out_psi = p_out_barg * 14.5038
+    
+    # CRITICAL UNIT FIX: Convert barg to Absolute Pressure (psia) for Napier's equation
+    p_in_psia = (p_in_barg * 14.5038) + 14.696
+    p_out_psia = (p_out_barg * 14.5038) + 14.696
+    
     cv = 22.1 * (d_in ** 2)
     
     if application == "Steam Mains & Headers":
-        if p_out_psi >= p_in_psi: return 0.0
-        return f_t * 1.4 * cv * np.sqrt((p_in_psi - p_out_psi) * (p_in_psi + p_out_psi))
+        if p_out_psia >= p_in_psia: return 0.0
+        return f_t * 1.4 * cv * np.sqrt((p_in_psia - p_out_psia) * (p_in_psia + p_out_psia))
         
     elif application == "Process":
-        if p_out_psi >= (p_in_psi / 2):
-            return f_t * 0.25 * cv * np.sqrt((p_in_psi - p_out_psi) * (p_in_psi + p_out_psi))
+        if p_out_psia >= (p_in_psia / 2):
+            return f_t * 0.25 * cv * np.sqrt((p_in_psia - p_out_psia) * (p_in_psia + p_out_psia))
         else:
-            return f_t * 0.25 * cv * np.sqrt((p_in_psi - p_in_psi/2) * (p_in_psi + p_in_psi/2))
+            return f_t * 0.25 * cv * np.sqrt((p_in_psia - p_in_psia/2) * (p_in_psia + p_in_psia/2))
     return 0.0
 
 # -----------------------------------------------------------------------------
@@ -163,8 +167,8 @@ def draw_orifice_schematic():
     ax.arrow(1.5, 1.5, 2, 0, head_width=0.15, head_length=0.2, fc='#AED6F1', ec='#AED6F1')
     ax.arrow(5.5, 2, 2, 0, head_width=0.2, head_length=0.3, fc='#3498db', ec='#3498db')
     
-    ax.text(2, 3.2, 'Inlet Pressure (Pin)', fontsize=11, color='#c0392b', fontweight='bold', ha='center')
-    ax.text(8, 3.2, 'Outlet Pressure (Pout)', fontsize=11, color='#27ae60', fontweight='bold', ha='center')
+    ax.text(2, 3.2, 'Inlet Pressure (Pin, psia)', fontsize=11, color='#c0392b', fontweight='bold', ha='center')
+    ax.text(8, 3.2, 'Outlet Pressure (Pout, psia)', fontsize=11, color='#27ae60', fontweight='bold', ha='center')
     ax.text(5, 0.6, 'Orifice Diameter (D)', fontsize=11, color='#2c3e50', fontweight='bold', ha='center')
     ax.plot([5, 5], [1.7, 2.3], 'r--', lw=1.5)
 
@@ -214,8 +218,8 @@ with tab_theory:
         st.markdown("""
         * **L**: Actual loss of steam across the system (kg/hr)
         * **d**: Diameter of the sharp-edged orifice (inches)
-        * **Pin**: Pressure of steam at inlet of trap (psi)
-        * **Pout**: Pressure of steam at outlet of trap (psi)
+        * **Pin**: Pressure of steam at inlet of trap (Absolute Pressure: psia)
+        * **Pout**: Pressure of steam at outlet of trap (Absolute Pressure: psia)
         * **h**: Operating hours of the trap
         """)
         st.subheader("System Factors")
@@ -229,7 +233,7 @@ with tab_theory:
         st.markdown("- **Process**: Capacity Factor (S) = 1.75, resulting in FS = 0.9")
         st.markdown("**Flow Coefficient (CV)**: $C_V = 22.1 \times d^2$")
     st.markdown("---")
-    st.subheader("Application Specific Formulas")
+    st.subheader("Application Specific Formulas (Rates in kg/hr)")
     col3, col4 = st.columns(2)
     with col3:
         st.markdown("**1. Steam Traps Draining Steam Mains and Headers**")
@@ -277,19 +281,20 @@ with tab_inputs:
         st.write("Selected Configuration Matrix", filtered_df)
 
     with col_conv:
-        st.subheader("Converted Imperial Parameters")
-        p_in_psi = p_in_barg * 14.5038
-        p_out_psi = p_out_barg * 14.5038
-        st.metric("Inlet Pressure (Pin)", f"{p_in_psi:.2f} psi")
-        st.metric("Outlet Pressure (Pout)", f"{p_out_psi:.2f} psi")
+        st.subheader("Converted Absolute Parameters")
+        st.info("Napier's logic strictly requires Absolute Pressure (psia) by adding atmospheric pressure (14.696 psi) to the converted gauge pressure.")
+        p_in_psia = (p_in_barg * 14.5038) + 14.696
+        p_out_psia = (p_out_barg * 14.5038) + 14.696
+        st.metric("Inlet Pressure (Pin)", f"{p_in_psia:.2f} psia")
+        st.metric("Outlet Pressure (Pout)", f"{p_out_psia:.2f} psia")
         st.metric("Service Factor (Fs)", f"{f_s:.3f}")
         st.metric("Failure Factor (FT)", f"{f_t}")
         
         if application == "Process":
-            if p_out_psi >= (p_in_psi / 2):
-                st.info(f"Condition A Applied: Pout ({p_out_psi:.1f}) >= Pin/2 ({p_in_psi/2:.1f})")
+            if p_out_psia >= (p_in_psia / 2):
+                st.info(f"Condition A Applied: Pout ({p_out_psia:.1f}) >= Pin/2 ({p_in_psia/2:.1f})")
             else:
-                st.info(f"Condition B Applied: Pout ({p_out_psi:.1f}) < Pin/2 ({p_in_psi/2:.1f})")
+                st.info(f"Condition B Applied: Pout ({p_out_psia:.1f}) < Pin/2 ({p_in_psia/2:.1f})")
 
 # --- TAB 3: CALCULATIONS ---
 with tab_calcs:
@@ -320,7 +325,6 @@ with tab_visuals:
     st.subheader("Standalone Interactive Dashboard")
     st.markdown("This dashboard is completely isolated from the inputs tab. Use the interactive legends on the right side of each graph to click and toggle specific lines on or off.")
     
-    # Generate standalone trap options from the full master dataframe
     unique_traps_all = df.drop_duplicates(subset=['Product Name', 'Size (DN)', 'Orifice Size (mm)'])
     trap_options_all = {f"{row['Product Name']} - DN{row['Size (DN)']} (Orifice: {row['Orifice Size (mm)']}mm, DP: {row['Differential Pressure (bar g)']}bar)": row for index, row in unique_traps_all.iterrows()}
         
@@ -342,7 +346,6 @@ with tab_visuals:
             
         viz_fails = st.multiselect("Select Failure Types to Overlay", list(fail_options.keys()), default=list(fail_options.keys()))
 
-        # Expander for manual axis overrides
         with st.expander("Axis Scaling Controls (Optional - Graphs are fully interactive)"):
             st.markdown("Use these inputs to strictly clamp the axis boundaries if you do not want to use your mouse to zoom/pan.")
             g1c1, g1c2, g1c3, g1c4 = st.columns(4)
@@ -408,7 +411,6 @@ with tab_visuals:
                 
                 fig2.add_trace(go.Scatter(x=dia_range, y=loss_range_dia, mode='lines', name=label_str, line=dict(color=c, dash=ls, width=2.5)))
     
-    # Current Operating Point mark
     current_loss_viz = calc_steam_loss(d_mm, viz_p_in_op, viz_p_out, viz_app, fail_options["Blowthrough (BT)"])
     fig2.add_trace(go.Scatter(x=[d_mm], y=[current_loss_viz], mode='markers', name=f'Op Point (@ {viz_p_in_op} barg, BT)', marker=dict(color='black', size=14, symbol='star')))
 
