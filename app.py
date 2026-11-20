@@ -122,40 +122,51 @@ df['Orifice Size (mm)'] = pd.to_numeric(df['Orifice Size (mm)'], errors='coerce'
 df = df.dropna(subset=['Orifice Size (mm)'])
 
 # -----------------------------------------------------------------------------
-# 2. Mathematical Functions
+# 2. Physics & Mathematical Functions
 # -----------------------------------------------------------------------------
 def calc_service_factor(S):
     if S <= 0: return 0
     return 2.1 * (S - 1) / S
 
 def calc_steam_loss(d_mm, p_in_barg, p_out_barg, application, f_t=1.0, mains_pout_mode="Use Given Pout"):
-    """Calculates steam loss natively in kg/hr using absolute pressure."""
+    """
+    Calculates steam loss natively in kg/hr using the true physical Napier's Equation.
+    Corrects the empirical formula error by calculating true lb/hr max flow and converting to kg/hr.
+    """
     if d_mm <= 0: return 0.0
     d_in = d_mm / 25.4
     
+    # Convert barg to Absolute Pressure (psia)
     p_in_psia = (p_in_barg * 14.5038) + 14.696
     p_out_psia = (p_out_barg * 14.5038) + 14.696
     
-    cv = 22.1 * (d_in ** 2)
-    
-    if application == "Steam Mains & Headers":
-        if mains_pout_mode == "Use Pout = Pin / 2":
-            effective_p_out_psia = p_in_psia / 2
-        else:
-            effective_p_out_psia = p_out_psia
-            
-        if effective_p_out_psia >= p_in_psia: return 0.0
-        return f_t * 1.4 * cv * np.sqrt((p_in_psia - effective_p_out_psia) * (p_in_psia + effective_p_out_psia))
+    # Application Logic for effective Pout
+    if application == "Steam Mains & Headers" and mains_pout_mode == "Use Pout = Pin / 2":
+        effective_p_out_psia = p_in_psia / 2
+    elif application == "Process" and p_out_psia < (p_in_psia / 2):
+        effective_p_out_psia = p_in_psia / 2
+    else:
+        effective_p_out_psia = p_out_psia
         
-    elif application == "Process":
-        if p_out_psia >= (p_in_psia / 2):
-            return f_t * 0.25 * cv * np.sqrt((p_in_psia - p_out_psia) * (p_in_psia + p_out_psia))
-        else:
-            return f_t * 0.25 * cv * np.sqrt((p_in_psia - p_in_psia/2) * (p_in_psia + p_in_psia/2))
-    return 0.0
+    if effective_p_out_psia >= p_in_psia: return 0.0
+    
+    # Calculate expansion pressure differential
+    pressure_factor = np.sqrt((p_in_psia - effective_p_out_psia) * (p_in_psia + effective_p_out_psia))
+    
+    # True Napier Equation: W(lb/hr) = 24.24 * P * D^2
+    w_lb_hr = 24.24 * pressure_factor * (d_in ** 2)
+    
+    # Convert lb/hr to kg/hr
+    w_kg_hr = w_lb_hr * 0.453592
+    
+    # Apply Failure Factor (and Service Factors if required by the model logic)
+    if application == "Steam Mains & Headers":
+        return f_t * 1.4 * w_kg_hr
+    else:
+        return f_t * 0.25 * w_kg_hr
 
 # -----------------------------------------------------------------------------
-# 3. Chart Design Functions (Static Matplotlib Schematic)
+# 3. Chart Design Functions 
 # -----------------------------------------------------------------------------
 def draw_orifice_schematic():
     fig, ax = plt.subplots(figsize=(7, 3), facecolor='white')
@@ -214,13 +225,14 @@ with tab_theory:
     with col1:
         st.subheader("Orifice Construction")
         st.pyplot(draw_orifice_schematic())
-        st.subheader("General Equation")
-        st.latex(r"L = F_T \times F_S \times C_V \times h \times \sqrt{(P_{in} - P_{out})(P_{in} + P_{out})}")
+        st.subheader("Corrected Fundamental Equation (Napier)")
+        st.latex(r"W_{lb/hr} = 24.24 \times D^2 \times \sqrt{(P_{in} - P_{out})(P_{in} + P_{out})}")
+        st.latex(r"W_{kg/hr} = W_{lb/hr} \times 0.453592")
     with col2:
         st.subheader("Nomenclature")
         st.markdown("""
         * **L**: Actual loss of steam across the system (kg/hr)
-        * **d**: Diameter of the sharp-edged orifice (inches)
+        * **D**: Diameter of the sharp-edged orifice (inches)
         * **Pin**: Pressure of steam at inlet of trap (Absolute Pressure: psia)
         * **Pout**: Pressure of steam at outlet of trap (Absolute Pressure: psia)
         * **h**: Operating hours of the trap
@@ -230,26 +242,22 @@ with tab_theory:
         st.markdown("- **Blowthrough (BT)**: Trap blowing full bore ($F_T = 1.0$)")
         st.markdown("- **Leaking (LK)**: Partial leak ($F_T = 0.25$)")
         st.markdown("- **Rapid Cycle (RC)**: Motor boating / cycling ($F_T = 0.2$)")
-        st.markdown("**Service Factor (FS)**:")
-        st.latex(r"F_S = \frac{2.1 \times (S - 1)}{S}")
-        st.markdown("- **Steam Mains**: Capacity Factor (S) = 3.0, resulting in FS = 1.4")
-        st.markdown("- **Process**: Capacity Factor (S) = 1.75, resulting in FS = 0.9")
-        st.markdown("**Flow Coefficient (CV)**: $C_V = 22.1 \times d^2$")
+        
     st.markdown("---")
-    st.subheader("Application Specific Formulas (Rates in kg/hr)")
+    st.subheader("Application Specific Modifiers")
     col3, col4 = st.columns(2)
     with col3:
         st.markdown("**1. Steam Traps Draining Steam Mains and Headers**")
         st.markdown("Condition 1: Using Given $P_{out}$")
-        st.latex(r"Loss = F_T \times 1.4 \times 22.1 \times d^2 \times \sqrt{(P_{in} - P_{out})(P_{in} + P_{out})}")
+        st.latex(r"Loss = F_T \times 1.4 \times W_{kg/hr}(P_{in}, P_{out})")
         st.markdown("Condition 2: $P_{out} = P_{in}/2$")
-        st.latex(r"Loss = F_T \times 1.4 \times 22.1 \times d^2 \times \sqrt{(P_{in} - P_{in}/2)(P_{in} + P_{in}/2)}")
+        st.latex(r"Loss = F_T \times 1.4 \times W_{kg/hr}(P_{in}, P_{in}/2)")
     with col4:
         st.markdown("**2. Process Steam Traps**")
         st.markdown("Condition A: $P_{out} \ge P_{in}/2$")
-        st.latex(r"Loss = F_T \times 0.25 \times 22.1 \times d^2 \times \sqrt{(P_{in} - P_{out})(P_{in} + P_{out})}")
+        st.latex(r"Loss = F_T \times 0.25 \times W_{kg/hr}(P_{in}, P_{out})")
         st.markdown("Condition B: $P_{out} < P_{in}/2$")
-        st.latex(r"Loss = F_T \times 0.25 \times 22.1 \times d^2 \times \sqrt{(P_{in} - P_{in}/2)(P_{in} + P_{in}/2)}")
+        st.latex(r"Loss = F_T \times 0.25 \times W_{kg/hr}(P_{in}, P_{in}/2)")
 
 # --- TAB 2: INPUTS & CONVERSIONS ---
 with tab_inputs:
@@ -292,7 +300,7 @@ with tab_inputs:
 
     with col_conv:
         st.subheader("Converted Absolute Parameters")
-        st.info("Napier's logic strictly requires Absolute Pressure (psia) by adding atmospheric pressure (14.696 psi) to the converted gauge pressure.")
+        st.info("Physics logic strictly requires Absolute Pressure (psia) by adding atmospheric pressure (14.696 psi) to the converted gauge pressure.")
         p_in_psia = (p_in_barg * 14.5038) + 14.696
         p_out_psia = (p_out_barg * 14.5038) + 14.696
         st.metric("Inlet Pressure (Pin)", f"{p_in_psia:.2f} psia")
@@ -310,13 +318,11 @@ with tab_inputs:
 
 # --- TAB 3: CALCULATIONS ---
 with tab_calcs:
-    st.subheader("Computed Steam Loss Data")
+    st.subheader("Computed Steam Loss Data (Corrected for metric conversion)")
     if not filtered_df.empty:
         results = []
         for index, row in filtered_df.iterrows():
             d_mm = row['Orifice Size (mm)']
-            d_in = d_mm / 25.4
-            cv = 22.1 * (d_in ** 2)
             loss_hr = calc_steam_loss(d_mm, p_in_barg, p_out_barg, application, f_t, mains_pout_mode)
             loss_yr = loss_hr * hours
             results.append({
@@ -324,7 +330,6 @@ with tab_calcs:
                 "Size (DN)": row['Size (DN)'],
                 "DP (bar g)": row['Differential Pressure (bar g)'],
                 "Orifice (mm)": d_mm,
-                "Flow Coeff (Cv)": round(cv, 4),
                 "Loss (kg/hr)": round(loss_hr, 2),
                 "Annual Loss (kg/yr)": round(loss_yr, 2)
             })
@@ -361,7 +366,7 @@ with tab_visuals:
         with row2_col2:
             viz_custom_pin = st.number_input("Custom Inlet Pressure (barg)", min_value=0.0, value=0.0, step=0.5)
 
-        with st.expander("Axis Scaling Controls (Optional - Graphs are fully interactive)"):
+        with st.expander("Axis Scaling Controls (Optional)"):
             st.markdown("Use these inputs to strictly clamp the axis boundaries if you do not want to use your mouse to zoom/pan.")
             g1c1, g1c2, g1c3, g1c4 = st.columns(4)
             g1_x_max = g1c2.number_input("Graph 1 X Max (barg)", value=10.0, step=1.0)
