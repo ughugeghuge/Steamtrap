@@ -1,8 +1,9 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 import io
-from PIL import Image
 
 # -----------------------------------------------------------------------------
 # 1. Dataset Initialization
@@ -118,44 +119,99 @@ Float trap,20,32,1.6"""
 df = pd.read_csv(io.StringIO(raw_data))
 
 # -----------------------------------------------------------------------------
-# 2. UI Setup & Theory
+# 2. Calculation Logic Module
+# -----------------------------------------------------------------------------
+def calc_steam_loss(d_mm, p_in_barg, p_out_barg, application):
+    """Calculates steam loss (kg/hr) based on generalized Napier's formula."""
+    if d_mm <= 0:
+        return 0.0
+        
+    d_in = d_mm / 25.4
+    p_in_psi = p_in_barg * 14.5038
+    p_out_psi = p_out_barg * 14.5038
+    
+    cv = 22.1 * (d_in ** 2)
+    
+    if application == "Steam Mains & Headers":
+        if p_out_psi > p_in_psi:
+            return 0.0
+        return 1.4 * cv * np.sqrt((p_in_psi - p_out_psi) * (p_in_psi + p_out_psi))
+        
+    elif application == "Process":
+        if p_out_psi >= (p_in_psi / 2):
+            return 0.25 * cv * np.sqrt((p_in_psi - p_out_psi) * (p_in_psi + p_out_psi))
+        else:
+            return 0.25 * cv * np.sqrt((p_in_psi - p_in_psi/2) * (p_in_psi + p_in_psi/2))
+    
+    return 0.0
+
+# -----------------------------------------------------------------------------
+# 3. Drawing Generators
+# -----------------------------------------------------------------------------
+def draw_orifice_schematic():
+    """Generates a dynamic matplotlib schematic of a sharp-edged orifice."""
+    fig, ax = plt.subplots(figsize=(8, 4))
+    
+    # Draw pipe walls
+    ax.plot([0, 10], [3, 3], 'k-', lw=3)
+    ax.plot([0, 10], [1, 1], 'k-', lw=3)
+    
+    # Draw sharp edged orifice
+    ax.add_patch(patches.Rectangle((4.8, 2.3), 0.4, 0.7, facecolor='gray', edgecolor='black'))
+    ax.add_patch(patches.Rectangle((4.8, 1.0), 0.4, 0.7, facecolor='gray', edgecolor='black'))
+    
+    # Flow Arrows
+    ax.arrow(1, 2, 2, 0, head_width=0.2, head_length=0.3, fc='blue', ec='blue')
+    ax.arrow(1.5, 2.5, 2, 0, head_width=0.15, head_length=0.2, fc='lightblue', ec='lightblue')
+    ax.arrow(1.5, 1.5, 2, 0, head_width=0.15, head_length=0.2, fc='lightblue', ec='lightblue')
+    
+    # Choked flow arrows
+    ax.arrow(5.5, 2, 2, 0, head_width=0.2, head_length=0.3, fc='blue', ec='blue')
+    
+    # Labels
+    ax.text(2, 3.2, 'Inlet Pressure ($P_{in}$)', fontsize=12, color='darkred', fontweight='bold', ha='center')
+    ax.text(8, 3.2, 'Outlet Pressure ($P_{out}$)', fontsize=12, color='darkgreen', fontweight='bold', ha='center')
+    ax.text(5, 0.6, 'Orifice Diameter ($D$)', fontsize=12, color='black', fontweight='bold', ha='center')
+    ax.text(2, 0.6, 'Saturated Steam Flow', fontsize=10, style='italic', ha='center')
+    
+    # Orifice Dotted Line
+    ax.plot([5, 5], [1.7, 2.3], 'r--', lw=2)
+
+    ax.set_xlim(0, 10)
+    ax.set_ylim(0, 4)
+    ax.axis('off')
+    return fig
+
+# -----------------------------------------------------------------------------
+# 4. UI Setup & Theory
 # -----------------------------------------------------------------------------
 st.set_page_config(page_title="Steam Trap Loss Calculator", layout="wide")
 st.title("Steam Trap Loss Calculator & Modeler")
 
 st.header("1. Theory & Nomenclature")
+
 col1, col2 = st.columns(2)
 with col1:
-    st.subheader("Napier's Equation")
-    try:
-        st.image("image_3ea26b.jpg", caption="Live saturated steam flow through an orifice (choked flow)")
-    except Exception as e:
-        st.warning("Please upload 'image_3ea26b.jpg' to the working directory.")
-        
+    st.subheader("Napier's Equation & Orifice Construction")
+    st.pyplot(draw_orifice_schematic())
+    
 with col2:
-    st.subheader("Steam Loss vs Orifice Diameter Graph")
-    try:
-        st.image("image_3ea5b3.jpg", caption="Steam Loss (kg/hr) at varying pressures and diameters")
-    except Exception as e:
-        st.warning("Please upload 'image_3ea5b3.jpg' to the working directory.")
-
-st.markdown("""
-### Nomenclature
-* **W**: Steam loss based on basic Napier's empirical formula (lb/hr)
-* **L**: Actual loss of steam across the system (kg/hr)
-* **D / d**: Diameter of the sharp-edged orifice (inches / mm)
-* **P_in**: Pressure of steam at inlet of trap (psi / barg)
-* **P_out**: Pressure of steam at outlet of trap (psi / barg)
-* **F_T**: Failure factor of trap (empirical, default = 1)
-* **F_S**: Service factor of trap 
-* **C_V**: Flow coefficient of the trap
-* **h**: Operating hours of the trap
-""")
-
-st.latex(r"L = F_T \times F_S \times C_V \times h \times \sqrt{(P_{in} - P_{out})(P_{in} + P_{out})}")
+    st.subheader("Nomenclature")
+    st.markdown("""
+    * **W**: Steam loss based on basic Napier's empirical formula (lb/hr)
+    * **L**: Actual loss of steam across the system (kg/hr)
+    * **D / d**: Diameter of the sharp-edged orifice (inches / mm)
+    * **P_in**: Pressure of steam at inlet of trap (psi / barg)
+    * **P_out**: Pressure of steam at outlet of trap (psi / barg)
+    * **F_T**: Failure factor of trap (empirical, default = 1)
+    * **F_S**: Service factor of trap (Mains = 1.4, Process = 0.9)
+    * **C_V**: Flow coefficient of the trap (22.1 * D²)
+    * **h**: Operating hours of the trap
+    """)
+    st.latex(r"L = F_T \times F_S \times C_V \times h \times \sqrt{(P_{in} - P_{out})(P_{in} + P_{out})}")
 
 # -----------------------------------------------------------------------------
-# 3. Interactive Inputs
+# 5. Interactive Inputs
 # -----------------------------------------------------------------------------
 st.header("2. Input Parameters")
 
@@ -174,13 +230,12 @@ with col_a:
         
         dp = st.selectbox("Select Differential Pressure (bar g)", filtered_df['Differential Pressure (bar g)'].unique())
         
-        # Get corresponding orifice size
         orifice_mm_str = filtered_df[filtered_df['Differential Pressure (bar g)'] == dp]['Orifice Size (mm)'].values[0]
         try:
             orifice_mm = float(orifice_mm_str)
         except:
-            st.warning("Orifice size for this selection is missing or non-numeric. Please use custom override.")
-            orifice_mm = 0.0
+            st.warning("Orifice size for this selection is missing or non-numeric. Defaulting to 4.0 mm.")
+            orifice_mm = 4.0
             
         st.success(f"Selected Orifice Size: {orifice_mm} mm")
     else:
@@ -194,55 +249,56 @@ with col_b:
     application = st.radio("Application Type", ["Steam Mains & Headers", "Process"])
 
 # -----------------------------------------------------------------------------
-# 4. Mathematical Conversions & Calculations
+# 6. Perform Calculations
 # -----------------------------------------------------------------------------
-# Conversions
+# Current operating point calculation
+loss_kg_hr = calc_steam_loss(orifice_mm, p_in_barg, p_out_barg, application)
+total_loss_yr = loss_kg_hr * hours
+
 d_inches = orifice_mm / 25.4
 p_in_psi = p_in_barg * 14.5038
 p_out_psi = p_out_barg * 14.5038
-
-# Constants
-F_T = 1.0
 C_V = 22.1 * (d_inches ** 2)
-
-# Logic Branches
-loss_kg_hr = 0.0
-
-if application == "Steam Mains & Headers":
-    F_S = 1.4
-    if p_in_psi >= p_out_psi:
-        loss_kg_hr = 1.4 * C_V * np.sqrt((p_in_psi - p_out_psi) * (p_in_psi + p_out_psi))
-    else:
-        st.error("Outlet pressure cannot be greater than inlet pressure.")
-
-elif application == "Process":
-    F_S = 0.9
-    # Check condition A vs B
-    if p_out_psi >= (p_in_psi / 2):
-        loss_kg_hr = 0.25 * C_V * np.sqrt((p_in_psi - p_out_psi) * (p_in_psi + p_out_psi))
-    else:
-        loss_kg_hr = 0.25 * C_V * np.sqrt((p_in_psi - p_in_psi/2) * (p_in_psi + p_in_psi/2))
-
-total_loss_yr = loss_kg_hr * hours
+F_S = 1.4 if application == "Steam Mains & Headers" else 0.9
 
 # -----------------------------------------------------------------------------
-# 5. Output Results
+# 7. Output Results & Dynamic Chart
 # -----------------------------------------------------------------------------
-st.header("3. Calculation Results")
+st.header("3. Calculation Results & Sensitivity Analysis")
 st.markdown("---")
 
 col_res1, col_res2, col_res3 = st.columns(3)
 
-col_res1.metric("Converted Orifice Diameter", f"{d_inches:.4f} in")
-col_res1.metric("Converted Inlet Pressure", f"{p_in_psi:.2f} psi")
-col_res1.metric("Converted Outlet Pressure", f"{p_out_psi:.2f} psi")
+col_res1.metric("Converted Orifice Dia.", f"{d_inches:.4f} in")
+col_res1.metric("Converted Inlet Press.", f"{p_in_psi:.2f} psi")
+col_res1.metric("Converted Outlet Press.", f"{p_out_psi:.2f} psi")
 
 col_res2.metric("Flow Coefficient (C_V)", f"{C_V:.4f}")
 col_res2.metric("Service Factor (F_S)", f"{F_S}")
-col_res2.metric("Failure Factor (F_T)", f"{F_T}")
+col_res2.metric("Failure Factor (F_T)", "1.0")
 
 col_res3.metric("Steam Loss Rate", f"{loss_kg_hr:.2f} kg/hr")
 col_res3.metric("Total Annual Loss", f"{total_loss_yr:,.2f} kg/yr")
 
 st.markdown("---")
+
+# --- Dynamic Chart Generation ---
+st.subheader("Dynamic Sensitivity: Steam Loss vs Orifice Diameter")
+
+# Generate an array of orifice sizes from 20% to 200% of selected size
+dia_range = np.linspace(max(0.5, orifice_mm * 0.2), orifice_mm * 2.0, 100)
+loss_range = [calc_steam_loss(d, p_in_barg, p_out_barg, application) for d in dia_range]
+
+fig2, ax2 = plt.subplots(figsize=(10, 5))
+ax2.plot(dia_range, loss_range, label=f'Loss Curve @ {p_in_barg} barg Inlet', color='navy', linewidth=2)
+ax2.plot(orifice_mm, loss_kg_hr, marker='o', markersize=10, color='red', label=f'Current Op Point ({orifice_mm}mm, {loss_kg_hr:.1f} kg/hr)')
+
+ax2.set_xlabel("Orifice Diameter (mm)", fontweight='bold')
+ax2.set_ylabel("Steam Loss (kg/hr)", fontweight='bold')
+ax2.set_title(f"Impact of Orifice Wear on Steam Loss ({application})", fontweight='bold')
+ax2.grid(True, linestyle='--', alpha=0.7)
+ax2.legend()
+
+st.pyplot(fig2)
+
 st.info("Note: The calculations utilize the generalized industrial adaptation of Napier's formula, converting inputs from Metric (barg, mm) to Imperial (psi, inches) internally before executing the logic tree based on the application type.")
