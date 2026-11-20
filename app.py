@@ -275,53 +275,66 @@ with tab_visuals:
     st.markdown("Analyze how steam loss reacts to varying back pressures and orifice wear across standard inlet pressures (4.5, 10, 13, 14, 21 barg).")
     
     if not filtered_df.empty:
-        unique_traps = filtered_df.drop_duplicates(subset=['Product Name', 'Orifice Size (mm)'])
-        standard_pins = [4.5, 10, 13, 14, 21]
-        
+        # Create a dictionary for local dropdown selection
+        unique_traps = filtered_df.drop_duplicates(subset=['Product Name', 'Size (DN)', 'Orifice Size (mm)'])
+        trap_options = {}
         for index, row in unique_traps.iterrows():
-            d_mm = row['Orifice Size (mm)']
-            name = f"{row['Product Name']} (DN{row['Size (DN)']}, Dia: {d_mm}mm)"
-            st.markdown(f"### Analysis for {name}")
+            name_label = f"{row['Product Name']} - DN{row['Size (DN)']} (Orifice: {row['Orifice Size (mm)']}mm, DP: {row['Differential Pressure (bar g)']}bar)"
+            trap_options[name_label] = row
             
-            col_graph1, col_graph2 = st.columns(2)
+        st.markdown("### Visualization Controls")
+        col_v1, col_v2 = st.columns(2)
+        
+        with col_v1:
+            selected_trap_name = st.selectbox("Select Trap to Visualize", list(trap_options.keys()))
+        with col_v2:
+            viz_p_out = st.slider("Select Back Pressure ($P_{out}$) for Wear Analysis (barg)", min_value=0.0, max_value=10.0, value=2.0, step=0.5)
             
-            # --- Graph 1: Loss vs Variable Back Pressure ---
-            with col_graph1:
-                fig1, ax1 = plt.subplots(figsize=(8, 5))
-                p_out_range = np.linspace(0, 8, 100)
-                
-                for pin in standard_pins:
-                    loss_range_pout = [calc_steam_loss(d_mm, pin, pout, application) for pout in p_out_range]
-                    ax1.plot(p_out_range, loss_range_pout, linewidth=2, label=f'Pin = {pin} barg')
-                
-                ax1.set_xlabel("Back Pressure $P_{out}$ (barg)", fontweight='bold')
-                ax1.set_ylabel("Steam Loss (kg/hr)", fontweight='bold')
-                ax1.set_title(f"Loss vs. Back Pressure\n(Fixed Orifice: {d_mm}mm)", fontweight='bold')
-                ax1.grid(True, linestyle='--', alpha=0.7)
-                ax1.legend()
-                st.pyplot(fig1)
+        selected_trap = trap_options[selected_trap_name]
+        d_mm = selected_trap['Orifice Size (mm)']
+        
+        st.markdown(f"### Analysis for: **{selected_trap_name}**")
+        col_graph1, col_graph2 = st.columns(2)
+        standard_pins = [4.5, 10.0, 13.0, 14.0, 21.0]
+        
+        # --- Graph 1: Loss vs Variable Back Pressure ---
+        with col_graph1:
+            fig1, ax1 = plt.subplots(figsize=(8, 5))
+            p_out_range = np.linspace(0, 8, 100)
+            
+            for pin in standard_pins:
+                loss_range_pout = [calc_steam_loss(d_mm, pin, pout, application) for pout in p_out_range]
+                ax1.plot(p_out_range, loss_range_pout, linewidth=2, label=f'Pin = {pin} barg')
+            
+            # Show the selected backpressure as a vertical line
+            ax1.axvline(x=viz_p_out, color='gray', linestyle='--', alpha=0.5, label='Selected $P_{out}$')
+            
+            ax1.set_xlabel("Back Pressure $P_{out}$ (barg)", fontweight='bold')
+            ax1.set_ylabel("Steam Loss (kg/hr)", fontweight='bold')
+            ax1.set_title(f"Loss vs. Back Pressure\n(Fixed Orifice: {d_mm}mm)", fontweight='bold')
+            ax1.grid(True, linestyle='--', alpha=0.7)
+            ax1.legend()
+            st.pyplot(fig1)
 
-            # --- Graph 2: Loss vs Orifice Wear ---
-            with col_graph2:
-                fig2, ax2 = plt.subplots(figsize=(8, 5))
-                dia_range = np.linspace(1.0, max(10.0, d_mm * 2.0), 100)
-                
-                for pin in standard_pins:
-                    # Using the P_out chosen in the Inputs tab for the wear calculation
-                    loss_range_dia = [calc_steam_loss(d, pin, p_out_barg, application) for d in dia_range]
-                    ax2.plot(dia_range, loss_range_dia, linewidth=2, label=f'Pin = {pin} barg')
-                
-                # Plot the exact current state dot
-                current_loss = calc_steam_loss(d_mm, p_in_barg, p_out_barg, application)
-                ax2.plot(d_mm, current_loss, marker='*', markersize=12, color='black', label=f'Current Op Point')
-                
-                ax2.set_xlabel("Orifice Diameter (mm)", fontweight='bold')
-                ax2.set_ylabel("Steam Loss (kg/hr)", fontweight='bold')
-                ax2.set_title(f"Loss vs. Orifice Wear\n(Fixed $P_{{out}}$: {p_out_barg} barg)", fontweight='bold')
-                ax2.grid(True, linestyle='--', alpha=0.7)
-                ax2.legend()
-                st.pyplot(fig2)
+        # --- Graph 2: Loss vs Orifice Wear ---
+        with col_graph2:
+            fig2, ax2 = plt.subplots(figsize=(8, 5))
+            dia_range = np.linspace(1.0, max(10.0, d_mm * 2.0), 100)
             
-            st.markdown("---")
+            for pin in standard_pins:
+                loss_range_dia = [calc_steam_loss(d, pin, viz_p_out, application) for d in dia_range]
+                ax2.plot(dia_range, loss_range_dia, linewidth=2, label=f'Pin = {pin} barg')
+            
+            # Plot the specific current state dot (using the global Pin from Tab 2)
+            current_loss_viz = calc_steam_loss(d_mm, p_in_barg, viz_p_out, application)
+            ax2.plot(d_mm, current_loss_viz, marker='*', markersize=12, color='black', label=f'Op Point (@ {p_in_barg} barg)')
+            
+            ax2.set_xlabel("Orifice Diameter (mm)", fontweight='bold')
+            ax2.set_ylabel("Steam Loss (kg/hr)", fontweight='bold')
+            ax2.set_title(f"Loss vs. Orifice Wear\n(Fixed $P_{{out}}$: {viz_p_out} barg)", fontweight='bold')
+            ax2.grid(True, linestyle='--', alpha=0.7)
+            ax2.legend()
+            st.pyplot(fig2)
+            
     else:
         st.warning("Select traps in the 'Inputs' tab to generate visualizations.")
